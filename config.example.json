@@ -3,10 +3,5 @@
     "api_key": "填入你的 DeepSeek API Key",
     "base_url": "https://api.deepseek.com/chat/completions",
     "model": "deepseek-v4-flash"
-  },
-  "secrets": {
-    "ANYSEARCH_KEY": "填入你的 AnySearch API Key（不需要可留空或删除对应 MCP）",
-    "TAVILY_KEY": "填入你的 Tavily API Key（不需要可留空或删除对应 MCP）",
-    "SIYUAN_TOKEN": "填入你的思源笔记 Token（不需要可留空或删除对应 MCP）"
   }
 }

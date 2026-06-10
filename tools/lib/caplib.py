@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import secrets
 import signal
 import tempfile
@@ -61,31 +60,6 @@ def load_mcps():
     if not isinstance(data, list):
         raise CapabilityError("mcps/registry.json 必须是数组")
     return data
-
-
-def resolve_config_value(value, config=None):
-    if not isinstance(value, str):
-        return value
-    config = config or load_config(optional=True)
-
-    def replace(match):
-        name = match.group(1)
-        if name in os.environ:
-            return os.environ[name]
-        secrets_map = config.get("secrets", {})
-        if name in secrets_map:
-            return str(secrets_map[name])
-        return match.group(0)
-
-    return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", replace, value)
-
-
-def resolve_placeholders(obj, config=None):
-    if isinstance(obj, dict):
-        return {key: resolve_placeholders(value, config) for key, value in obj.items()}
-    if isinstance(obj, list):
-        return [resolve_placeholders(value, config) for value in obj]
-    return resolve_config_value(obj, config)
 
 
 def load_config(optional=False):

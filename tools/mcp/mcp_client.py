@@ -12,7 +12,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib.caplib import CapabilityError, ROOT, load_config, resolve_placeholders
+from lib.caplib import CapabilityError, ROOT
 
 
 PROTOCOL_VERSION = "2025-03-26"
@@ -46,7 +46,7 @@ def initialized_notification():
 
 class StdioMcpClient:
     def __init__(self, params, timeout=30):
-        self.params = resolve_placeholders(params, load_config(optional=True))
+        self.params = params
         self.timeout = timeout
         self.process = None
         self.lines = queue.Queue()
@@ -67,7 +67,7 @@ class StdioMcpClient:
             import os
 
             merged_env = os.environ.copy()
-            merged_env.update(resolve_placeholders(env, load_config(optional=True)))
+            merged_env.update(env)
         self.process = subprocess.Popen(
             [command] + args,
             stdin=subprocess.PIPE,
@@ -149,7 +149,7 @@ class StdioMcpClient:
 
 class HttpMcpClient:
     def __init__(self, params, timeout=30):
-        self.params = resolve_placeholders(params, load_config(optional=True))
+        self.params = params
         self.timeout = timeout
         self.ids = JsonRpcId()
         self.session_id = None
@@ -327,14 +327,8 @@ def call_tool_via_relay(relay_url, tool_name, params, timeout=30):
 
 
 def call_tool_via_http_session(session, tool_name, params, timeout=30):
-    from lib.caplib import load_config, resolve_placeholders
-
-    resolved = resolve_placeholders(
-        {"url": session["url"], "headers": session.get("headers", {})},
-        load_config(optional=True),
-    )
     client = HttpMcpClient.__new__(HttpMcpClient)
-    client.params = resolved
+    client.params = {"url": session["url"], "headers": session.get("headers", {})}
     client.timeout = timeout
     client.ids = JsonRpcId()
     client.session_id = session.get("session_id")

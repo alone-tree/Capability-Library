@@ -25,7 +25,7 @@
     "params": {
       "url": "https://api.anysearch.com/mcp",
       "headers": {
-        "Authorization": "Bearer ${ANYSEARCH_KEY}"
+        "Authorization": "Bearer your_anysearch_key"
       }
     }
   },
@@ -37,7 +37,7 @@
     "enabled": true,
     "transport": "streamable_http",
     "params": {
-      "url": "https://mcp.tavily.com/mcp/?tavilyApiKey=${TAVILY_KEY}"
+      "url": "https://mcp.tavily.com/mcp/?tavilyApiKey=your_tavily_key"
     }
   },
   {
@@ -87,7 +87,7 @@
       ],
       "env": {
         "SIYUAN_API_URL": "http://127.0.0.1:6806",
-        "SIYUAN_TOKEN": "${SIYUAN_TOKEN}"
+        "SIYUAN_TOKEN": "your_siyuan_token"
       },
       "cwd": null
     }

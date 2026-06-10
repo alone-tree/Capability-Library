@@ -1,0 +1,10 @@
+{
+  "deepseek": {
+    "api_key": "填入你的 DeepSeek API Key",
+    "base_url": "https://api.deepseek.com/chat/completions",
+    "model": "deepseek-chat"
+  },
+  "secrets": {
+    "TOKEN_NAME": "远程 MCP 请求头里可用 ${TOKEN_NAME} 引用这里的值"
+  }
+}

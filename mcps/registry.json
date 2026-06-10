@@ -1,0 +1,18 @@
+[
+  {
+    "id": "mcp_e82d00f10cfb",
+    "name": "本地回声 MCP",
+    "description": "一个用于演示和测试的本地标准输入输出 MCP，包含 echo 工具，会把传入参数原样返回。适合验证 load_mcp 和 use_tool 的基础链路。",
+    "remark": "仅用于 demo 和测试，不提供真实业务能力。",
+    "enabled": true,
+    "transport": "stdio",
+    "params": {
+      "command": "python",
+      "args": [
+        "tests/fake_stdio_mcp.py"
+      ],
+      "env": {},
+      "cwd": null
+    }
+  }
+]

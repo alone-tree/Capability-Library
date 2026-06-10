@@ -1,0 +1,6 @@
+{
+  "command": "python",
+  "args": ["tests/fake_stdio_mcp.py"],
+  "env": {},
+  "cwd": null
+}

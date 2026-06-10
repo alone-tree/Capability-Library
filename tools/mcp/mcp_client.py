@@ -1,9 +1,12 @@
 import json
+import os
 import queue
+import signal
 import subprocess
 import threading
 import urllib.error
 import urllib.request
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from pathlib import Path
 import sys
@@ -249,3 +252,90 @@ def open_mcp_client(item, timeout=30):
     if transport == "streamable_http":
         return HttpMcpClient(item["params"], timeout=timeout)
     raise CapabilityError(f"不支持的 MCP transport：{transport}")
+
+
+class RelayServer:
+    """HTTP relay that proxies tool calls to a live stdio MCP client."""
+
+    def __init__(self, client, host="127.0.0.1", port=0):
+        self.client = client
+        self.host = host
+        self.port = port
+        self._server = None
+        self._thread = None
+
+    @property
+    def url(self):
+        return f"http://{self.host}:{self.port}"
+
+    def start(self):
+        parent = self
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(length)) if length > 0 else {}
+                try:
+                    if self.path == "/tools/list":
+                        result = parent.client.list_tools()
+                    elif self.path == "/tools/call":
+                        result = parent.client.call_tool(body["tool"], body.get("params", {}))
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                    data = json.dumps({"ok": True, "result": result}, ensure_ascii=False).encode("utf-8")
+                except Exception as exc:
+                    data = json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *args):
+                pass
+
+        self._server = HTTPServer((self.host, self.port), _Handler)
+        self.port = self._server.server_port
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+        return self.port
+
+    def stop(self):
+        if self._server:
+            self._server.shutdown()
+
+
+def call_tool_via_relay(relay_url, tool_name, params, timeout=30):
+    payload = {"tool": tool_name, "params": params}
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        f"{relay_url}/tools/call",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            response = json.loads(resp.read().decode("utf-8"))
+            if response.get("ok"):
+                return response["result"]
+            raise CapabilityError(response.get("error", "Relay 返回错误"))
+    except urllib.error.URLError as exc:
+        raise CapabilityError(f"Relay 连接失败：{exc}。MCP 会话可能已断开，请重新 load_mcp。")
+
+
+def call_tool_via_http_session(session, tool_name, params, timeout=30):
+    from lib.caplib import load_config, resolve_placeholders
+
+    resolved = resolve_placeholders(
+        {"url": session["url"], "headers": session.get("headers", {})},
+        load_config(optional=True),
+    )
+    client = HttpMcpClient.__new__(HttpMcpClient)
+    client.params = resolved
+    client.timeout = timeout
+    client.ids = JsonRpcId()
+    client.session_id = session.get("session_id")
+    return client.call_tool(tool_name, params)

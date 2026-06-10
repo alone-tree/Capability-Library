@@ -2,6 +2,8 @@ import json
 import os
 import re
 import secrets
+import signal
+import tempfile
 from pathlib import Path
 
 
@@ -10,6 +12,7 @@ SKILLS_MANIFEST = ROOT / "skills" / "manifest.json"
 MCPS_REGISTRY = ROOT / "mcps" / "registry.json"
 CONFIG_LOCAL = ROOT / "config.local.json"
 CONFIG_EXAMPLE = ROOT / "config.example.json"
+SESSION_DIR = Path(tempfile.gettempdir()) / "capability-library" / "sessions"
 
 
 class CapabilityError(Exception):
@@ -138,3 +141,36 @@ def validate_mcp_item(item):
             raise CapabilityError("streamable_http MCP 的 params.headers 必须是对象")
     else:
         raise CapabilityError(f"不支持的 MCP transport：{transport}")
+
+
+def read_session(mcp_id):
+    path = SESSION_DIR / f"{mcp_id}.json"
+    if not path.exists():
+        return None
+    return read_json(path)
+
+
+def write_session(mcp_id, data):
+    path = SESSION_DIR / f"{mcp_id}.json"
+    write_json(path, data)
+
+
+def delete_session(mcp_id):
+    path = SESSION_DIR / f"{mcp_id}.json"
+    if path.exists():
+        path.unlink()
+
+
+def kill_stale_session(mcp_id):
+    session = read_session(mcp_id)
+    if session is None:
+        return
+    pid = session.get("pid")
+    if pid is None:
+        delete_session(mcp_id)
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except (ProcessLookupError, OSError):
+        pass
+    delete_session(mcp_id)

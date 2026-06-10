@@ -1,77 +1,183 @@
 # Capability Library
 
-能力库是一个本地、纯文件、跨 Agent 平台的能力注册与调用 demo。它不绑定 Hermes、Codex、Claude Code 或其他平台；主 AI 只需要能运行命令行和读取文件即可使用。
+## 核心理念与价值
+
+能力库是一个本地、纯文件、跨 Agent 平台的能力注册与调用层。它不绑定 Hermes、Codex、Claude Code 或其他平台；主 AI 只需要能运行命令行和读取文件即可使用。
+
+Skills 和 MCP 仅在实际需要时按需加载，不会在会话启动时就固定在系统提示词内。这带来三个好处：
+
+- **降低无效token**：可以注册任意数量的能力，不用担心MCP和skill太多而占用token。还能提高接收到首个 token 的速度（理论上）。
+- **MCP 完全热加载**：修改或新增 MCP 后再次 load 立即可用，无需重启 Agent 或执行 `/reload-mcp`
+- MCP 与 Agent 平台完全解绑后，每个 MCP 只需维护一份配置，所有平台共用。
+
+## 项目架构
+
+能力库由三个部分组成：**技能库**、**工具库**、**配套设施**。
+
+### 技能库（skills/）
+
+Markdown 文档合集，每篇文档就是一个 Skill——本质是给 AI 读的操作指南。每个 Skill 在 `skills/manifest.json` 中登记：
+
+| 字段 | 说明 |
+|------|------|
+| name | Skill 名称 |
+| id | 随机生成的唯一 ID |
+| path | Skill 文件的相对路径 |
+| description | 这个 Skill 是什么、适合什么场景 |
+| remark | 使用建议或注意事项（人类标注） |
+
+Skill 本身不执行任何代码，能力库只返回文件路径，由主 AI 自行读取。
+
+### 工具库（mcps/）
+
+MCP 注册表（`mcps/registry.json`），使用自建的统一格式登记所有 MCP 服务。每条记录包含名称、传输协议（stdio 或 streamable_http）、连接参数和说明文字。注册表同时给人读（`registry.md`）和给程序执行。
+
+敏感信息（API Key、Token）通过 `${变量名}` 占位符引用 `config.local.json` 中的 secrets，不硬编码在注册表里。
+
+### 配套设施（tools/）
+
+配套设施包括三个主要部分：前台咨询、MCP加载与调用接口、能力登记入库辅助工具
+
+| 模块 | 功能 |
+|------|------|
+| `advisor/ability_suggest.py` | 前台咨询：接收自然语言需求，调用 DeepSeek 分析已注册的 Skill 和 MCP，返回推荐结果 |
+| `mcp/load_mcp.py` | MCP 加载：按名称或 ID 连接 MCP 服务，获取完整工具列表和参数 schema |
+| `mcp/use_tool.py` | MCP 调用：连接指定 MCP，执行具体工具并返回结果 |
+| `mcp/mcp_client.py` | MCP 客户端核心：实现 JSON-RPC 协议，支持 stdio 和 streamable_http 两种传输 |
+| `registry/register_skill.py` | Skill 注册：校验路径、去重、写入清单并刷新 Markdown |
+| `registry/register_mcp.py` | MCP 注册：校验传输类型和必填字段、写入注册表并刷新 Markdown |
+| `registry/refresh_manifest_md.py` | 清单刷新：将 JSON 注册表同步为可读的 Markdown 清单 |
+| `lib/caplib.py` | 公共库：JSON 读写、配置加载、占位符解析（`${VAR}`）、格式校验 |
+
+## 使用流程
+
+```
+用户发出任务指令
+        │
+        ▼
+  主 AI 分析需求，判断是否需要外部能力
+        │
+        ├── 不确定 → ① ability_suggest.py "需求描述"
+        │              前台咨询 LLM 读取 Skill 清单 + MCP 注册表
+        │              返回：推荐哪些 Skill、哪些 MCP、推荐理由
+        │
+        ▼
+  ② 获取能力详情
+        │
+        ├── Skill → 直接读取返回的 Markdown 文件路径
+        │
+        └── MCP  → load_mcp.py --name "MCP名称"
+        │           连接 MCP，列出所有可用工具及参数
+        │
+        ▼
+  ③ 执行工具
+        │
+        └── use_tool.py --mcp "MCP名称" --tool "工具名" --params-json "{...}"
+             MCP 执行工具，返回结果给主 AI
+        │
+        ▼
+  主 AI 整合结果，完成用户任务
+```
+
+整个过程主 AI 只需运行命令行和读取文件，不需要任何平台特定的 SDK 或 API。
 
 ## 目录
 
 ```text
-skills/     Skill 文档和清单
-mcps/       MCP 注册表
-tools/      前台咨询、MCP 加载/调用、注册维护工具
-docs/       设计说明
+skills/                          Skill 文档和清单
+  manifest.json                    Skill 注册清单（程序读）
+  manifest.md                      Skill 注册清单（人读）
+  capability-library-guide/        能力库使用说明
+  intake-flow/                     入库流程说明
+  research-report-writing/         研究报告写作规范
+  web-search-workflow/             网页搜索工作流
+mcps/                             MCP 注册表
+  registry.json                    MCP 注册表（程序读）
+  registry.md                      MCP 注册表（人读）
+tools/                            配套设施
+  advisor/ability_suggest.py       前台咨询
+  mcp/load_mcp.py                  MCP 加载
+  mcp/use_tool.py                  MCP 工具调用
+  mcp/mcp_client.py                MCP JSON-RPC 客户端
+  mcp/relay.py                     stdio MCP relay 守护
+  registry/register_skill.py       Skill 注册
+  registry/register_mcp.py         MCP 注册
+  registry/refresh_manifest_md.py  清单刷新
+  lib/caplib.py                    公共库
+docs/                             文档
+  能力库设计思路.md
+  用户指南.md
+tests/                            测试桩和参数文件
+scripts/                          打包脚本
 ```
 
 ## 配置
 
-复制 `config.example.json` 为 `config.local.json`，填入 DeepSeek API Key。`config.local.json` 已加入忽略，不应提交真实密钥。
+复制 `config.example.json` 为 `config.local.json`（已 gitignore，不会提交）：
+
+```json
+{
+  "deepseek": {
+    "api_key": "sk-你的DeepSeek-API-Key",
+    "base_url": "https://api.deepseek.com/chat/completions",
+    "model": "deepseek-v4-flash"
+  },
+  "secrets": {
+    "ANYSEARCH_KEY": "AnySearch Key（可选）",
+    "TAVILY_KEY": "Tavily Key（可选）",
+    "SIYUAN_TOKEN": "思源 Token（可选）"
+  }
+}
+```
+
+`secrets` 中的值通过 `${变量名}` 注入 MCP 注册表，API Key 不会出现在 git 提交中。
 
 ## 常用命令
 
-咨询能力：
+### 咨询能力
 
 ```powershell
-python tools/advisor/ability_suggest.py "我需要检查一个本地网页并截图"
+python tools/advisor/ability_suggest.py "我需要搜索资料并做深度分析"
 ```
 
-加载 MCP 并查看工具：
+返回推荐的 Skill 路径、MCP 名称和简短理由。
+
+### 加载 MCP 并查看工具
 
 ```powershell
-python tools/mcp/load_mcp.py --name "示例 MCP"
+python tools/mcp/load_mcp.py --name "tavily"
 ```
 
-调用 MCP 工具：
+### 调用 MCP 工具
 
 ```powershell
-python tools/mcp/use_tool.py --mcp "示例 MCP" --tool "工具名" --params-json "{}"
+# 简单参数
+python tools/mcp/use_tool.py --mcp "tavily" --tool "tavily_search" --params-json '{"query":"AI最新动态","max_results":3}'
+
+# 复杂参数（含路径时推荐用文件）
+python tools/mcp/use_tool.py --mcp "codegraph" --tool "codegraph_search" --params-file "params.json"
 ```
 
-在 PowerShell 中传复杂 JSON 容易丢失双引号，也可以使用文件：
+### 注册 Skill
 
 ```powershell
-python tools/mcp/use_tool.py --mcp "示例 MCP" --tool "工具名" --params-file "params.json"
+python tools/registry/register_skill.py --name "名称" --path "skills/example/SKILL.md" --description "描述" --remark "备注"
 ```
 
-注册 Skill：
+### 注册 MCP
 
 ```powershell
-python tools/registry/register_skill.py --name "新 Skill" --path "skills/new-skill/SKILL.md" --description "描述" --remark "备注"
+# stdio
+python tools/registry/register_mcp.py --name "名称" --transport stdio --params-json '{"command":"python","args":["server.py"],"env":{},"cwd":null}' --description "描述" --remark "备注"
+
+# streamable_http
+python tools/registry/register_mcp.py --name "名称" --transport streamable_http --params-json '{"url":"https://api.example.com/mcp","headers":{"Authorization":"Bearer ${MY_TOKEN}"}}' --description "描述" --remark "备注"
 ```
 
-注册 MCP：
+Windows 路径复杂时用 `--params-file` 替代 `--params-json`。
 
-```powershell
-python tools/registry/register_mcp.py --name "新 MCP" --description "描述" --remark "备注" --transport stdio --params-json "{""command"":""node"",""args"":[""server.js""],""env"":{},""cwd"":null}"
-```
-
-也可以使用 `--params-file` 传入 JSON 文件。
-
-刷新 Markdown 清单：
+### 刷新 Markdown 清单
 
 ```powershell
 python tools/registry/refresh_manifest_md.py
 ```
-
-## 使用流程
-
-1. 主 AI 根据用户任务判断可能需要能力库。
-2. 主 AI 调用 `ability_suggest.py`，传入自然语言需求。
-3. 前台咨询 LLM 读取能力库说明、Skill 清单和 MCP 注册表，返回建议。
-4. 主 AI 根据结果读取 Skill 文件，或调用 `load_mcp.py` 获取 MCP 工具描述。
-5. 主 AI 调用 `use_tool.py` 执行具体 MCP 工具。
-
-## 第一版边界
-
-- Skill 只返回文件路径，不提供专门读取工具。
-- MCP 支持 `stdio` 和 `streamable_http`。
-- `load_mcp` 和 `use_tool` 每次独立连接，不维护常驻进程。
-- 暂不实现远程能力库，只在接口中保留未来扩展位置。

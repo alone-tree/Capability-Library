@@ -51,7 +51,7 @@ def ask_deepseek(query, guide, skills, mcps, timeout):
     if not api_key or api_key == "填入你的 DeepSeek API Key":
         raise CapabilityError(f"DeepSeek API Key 未配置。请根据 {CONFIG_EXAMPLE.name} 创建 {CONFIG_LOCAL.name}。")
     base_url = deepseek.get("base_url", "https://api.deepseek.com/chat/completions")
-    model = deepseek.get("model", "deepseek-chat")
+    model = deepseek.get("model", "deepseek-v4-flash")
     prompt = build_prompt(query, guide, skills, mcps)
     payload = {
         "model": model,
@@ -63,6 +63,7 @@ def ask_deepseek(query, guide, skills, mcps, timeout):
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
+        "reasoning_effort": "max",
     }
     request = urllib.request.Request(
         base_url,

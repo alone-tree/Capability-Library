@@ -14,5 +14,21 @@
     "description": "说明如何把新的 Skill 或 MCP 放入能力库，包括文件放置、注册工具调用、清单刷新和注意事项。",
     "remark": "用户要求“入库”或主 AI 准备保存新能力时优先阅读。",
     "enabled": true
+  },
+  {
+    "id": "skill_2ac9c1408f14",
+    "name": "研究报告写作",
+    "path": "skills/research-report-writing/SKILL.md",
+    "description": "行业研究、公司研究的调查、研究。撰写公司深度研究报告、行业分析报告、投资研究报告时触发。关键词：写报告、分析公司、深度研究、估值分析、行业研究、投资报告、调研报告。",
+    "remark": "目标读者：投资委员会成员。用投资人语言回答商业模式、成长空间、竞争壁垒、估值判断、风险五个核心问题。",
+    "enabled": true
+  },
+  {
+    "id": "skill_6259eb92ba83",
+    "name": "网页搜索工作流",
+    "path": "skills/web-search-workflow/SKILL.md",
+    "description": "通用网页搜索工作流。当需要搜索网页、查找文章、获取最新新闻、研究话题、提取URL内容、爬取网站时触发。关键词：搜索、找一下、查一下、研究一下、最新消息、读取网页、爬取。",
+    "remark": "优先使用Tavily MCP，内置WebSearch为备用。支持多语言搜索策略。",
+    "enabled": true
   }
 ]

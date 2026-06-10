@@ -1,0 +1,9 @@
+{
+  "command": "node",
+  "args": ["D:\\SiYuan\\data\\plugins\\siyuan-plugins-mcp-sisyphus\\mcp-server.cjs"],
+  "env": {
+    "SIYUAN_API_URL": "http://127.0.0.1:6806",
+    "SIYUAN_TOKEN": "${SIYUAN_TOKEN}"
+  },
+  "cwd": null
+}

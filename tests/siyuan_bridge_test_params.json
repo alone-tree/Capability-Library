@@ -1,0 +1,6 @@
+{
+  "command": "python",
+  "args": ["D:\\Siyuan2test\\data\\plugins\\siyuan-bridge\\bridge\\scripts\\run_mcp.py"],
+  "env": {},
+  "cwd": null
+}

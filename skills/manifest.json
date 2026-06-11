@@ -1,13 +1,5 @@
 [
   {
-    "id": "skill_7b4f0a9c2d1e",
-    "name": "能力库说明",
-    "path": "skills/capability-library-guide/SKILL.md",
-    "description": "说明能力库的定位、目录结构、使用流程，以及主 AI 如何通过能力库发现 Skill 和 MCP。",
-    "remark": "主 AI 不理解能力库机制，或需要确认如何使用能力库时优先阅读。",
-    "enabled": true
-  },
-  {
     "id": "skill_3d9a61f8c0b2",
     "name": "入库流程",
     "path": "skills/intake-flow/SKILL.md",

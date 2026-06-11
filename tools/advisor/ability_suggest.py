@@ -40,7 +40,7 @@ def main():
 
 
 def read_guide():
-    path = ROOT / "skills" / "capability-library-guide" / "SKILL.md"
+    path = ROOT / "docs" / "能力库使用说明.md"
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 

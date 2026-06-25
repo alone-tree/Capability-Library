@@ -5,26 +5,27 @@
 ## 维护原则
 
 1. 先读 `CAPABILITY.md` 和相关现有文件，再决定改法。
-2. 改动克制，只改完成当前任务必需的文件。
-3. `CAPABILITY.md` 只放入口和摘要，不放完整维护细则。
+2. 改动克制，只改当前任务必需的文件，不要顺手修改其他文件看起来不合理的地方。
+3. `CAPABILITY.md` 只放skill和MCP的描述，不放完整skill、不放完整MCP工具描述。
 4. MCP 变更后必须运行 `load_mcp.py` 验证。
-5. 不把密钥写进任何公开文件。
+5. 不把密钥写进任何公开文件（若涉及密匙，需要询问用户意见）。
 
 ## 新增或修改 Skill
 
 1. 检查 `skills/` 下是否已有相同或相近 Skill。
 2. 创建或更新 `skills/<name>/SKILL.md`，写清楚触发场景、执行流程、验证方式。
-3. 在 `CAPABILITY.md` 的 Skill 入口中补摘要。
+3. 在 `CAPABILITY.md` 的 Skill 入口中补摘要和skill文档的相对路径（以能力库为根目录）。
+4. 可以根据实际，对相互关联的一组skill放到同一组内，并只给这一组skill写一个详细描述，而非每个skill写一个描述。必要时可以创建一组skill的入口skill，并在入口skill中写各skill的描述、使用场景等。
 
 ## 新增或修改 MCP
 
 1. 检查 `mcps/registry.json` 是否已有相同或相近 MCP。
-2. 手动维护 `mcps/registry.json`，字段至少包含 `id`、`name`、`description`、`remark`、`enabled`、`transport`、`params`。
+2. 手动维护 `mcps/registry.json`，完整填写所需字段。
 3. stdio：`params.command` 必填，`args` 必须是数组，`env` 必须是对象。
 4. streamable_http：`params.url` 必填，`headers` 必须是对象。
-5. 在 `CAPABILITY.md` 的 MCP 简表中更新摘要。
+5. 在 `CAPABILITY.md` 的 MCP 表中更新MCP的描述。一个MCP一条描述，内容可以稍详细，写清楚核心用途、主要工具，但不必加具体参数。
 6. 运行 `python tools/mcp/load_mcp.py --name "<MCP名称>"` 验证。
-7. 有安全测试参数时，再运行 `use_tool.py` 做最小调用。
+7. 有测试参数时，再运行 `use_tool.py` 做最小调用。
 
 ## 禁用或删除能力
 
@@ -45,4 +46,4 @@
 1. `CAPABILITY.md` 是否让 AI 知道该能力存在。
 2. `mcps/registry.json` 格式是否正确。
 3. 新增或修改的 MCP 是否完成 load 测试。
-4. 文档间是否一致。
+

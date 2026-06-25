@@ -1,0 +1,72 @@
+[
+  {
+    "id": "echo-mcp",
+    "name": "本地回声 MCP",
+    "description": "用于演示和测试的本地 stdio MCP，包含 echo 工具，将传入参数原样返回。适合验证 load_mcp 和 use_tool 的基础链路。",
+    "remark": "仅用于 demo 和测试，不提供真实业务能力。",
+    "enabled": true,
+    "transport": "stdio",
+    "params": {
+      "command": "python",
+      "args": ["tests/fake_stdio_mcp.py"],
+      "env": {},
+      "cwd": null
+    }
+  },
+  {
+    "id": "example-node-mcp",
+    "name": "示例 Node MCP",
+    "description": "基于 Node.js 的本地 stdio MCP 示例。展示如何配置 Node 项目中的 MCP server，通常入口是一个 .cjs 或 .js 文件。",
+    "remark": "示例配置，实际使用时替换 command 和 args 为真实路径。env 可传入服务地址和鉴权令牌。",
+    "enabled": false,
+    "transport": "stdio",
+    "params": {
+      "command": "node",
+      "args": ["/path/to/your/mcp-server.cjs"],
+      "env": {
+        "API_URL": "http://127.0.0.1:6806",
+        "API_TOKEN": "your_token_here"
+      },
+      "cwd": null
+    }
+  },
+  {
+    "id": "example-binary-mcp",
+    "name": "示例二进制 MCP",
+    "description": "通过全局命令行启动的 stdio MCP 示例。适用于已安装到 PATH 的二进制程序（如 codegraph、uvx 等）。",
+    "remark": "示例配置。command 是全局可执行文件名，args 是子命令和参数。",
+    "enabled": false,
+    "transport": "stdio",
+    "params": {
+      "command": "your-cli-tool",
+      "args": ["serve", "--mcp"],
+      "env": {},
+      "cwd": null
+    }
+  },
+  {
+    "id": "example-http-mcp",
+    "name": "示例 HTTP MCP",
+    "description": "基于 streamable_http 的远程 MCP 示例。适用于通过 HTTP API 提供的 MCP 服务，通常在 headers 中携带 API Key 鉴权。",
+    "remark": "示例配置。url 为 MCP 服务端点，headers 中携带鉴权信息。",
+    "enabled": false,
+    "transport": "streamable_http",
+    "params": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer your_api_key_here"
+      }
+    }
+  },
+  {
+    "id": "example-http-url-param-mcp",
+    "name": "示例 HTTP MCP（URL 参数鉴权）",
+    "description": "基于 streamable_http 的远程 MCP 示例，通过 URL 查询参数传递 API Key，无需额外 headers。",
+    "remark": "示例配置。适用于将鉴权信息拼接在 URL 中的 MCP 服务。",
+    "enabled": false,
+    "transport": "streamable_http",
+    "params": {
+      "url": "https://api.example.com/mcp?apiKey=your_api_key_here"
+    }
+  }
+]

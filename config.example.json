@@ -1,7 +1,0 @@
-{
-  "deepseek": {
-    "api_key": "填入你的 DeepSeek API Key",
-    "base_url": "https://api.deepseek.com/chat/completions",
-    "model": "deepseek-v4-flash"
-  }
-}

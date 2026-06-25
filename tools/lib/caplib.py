@@ -1,16 +1,12 @@
 import json
 import os
-import secrets
 import signal
 import tempfile
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILLS_MANIFEST = ROOT / "skills" / "manifest.json"
 MCPS_REGISTRY = ROOT / "mcps" / "registry.json"
-CONFIG_LOCAL = ROOT / "config.local.json"
-CONFIG_EXAMPLE = ROOT / "config.example.json"
 SESSION_DIR = Path(tempfile.gettempdir()) / "capability-library" / "sessions"
 
 
@@ -44,32 +40,10 @@ def output_error(message, code="error", **extra):
     print_json(payload)
 
 
-def random_id(prefix):
-    return f"{prefix}_{secrets.token_hex(6)}"
-
-
-def load_skills():
-    data = read_json(SKILLS_MANIFEST, default=[])
-    if not isinstance(data, list):
-        raise CapabilityError("skills/manifest.json 必须是数组")
-    return data
-
-
 def load_mcps():
     data = read_json(MCPS_REGISTRY, default=[])
     if not isinstance(data, list):
         raise CapabilityError("mcps/registry.json 必须是数组")
-    return data
-
-
-def load_config(optional=False):
-    if not CONFIG_LOCAL.exists():
-        if optional:
-            return {}
-        raise CapabilityError("缺少 config.local.json。请复制 config.example.json 并填入配置。")
-    data = read_json(CONFIG_LOCAL)
-    if not isinstance(data, dict):
-        raise CapabilityError("config.local.json 必须是对象")
     return data
 
 
@@ -79,18 +53,6 @@ def find_mcp(name_or_id):
         if item.get("id") == name_or_id or item.get("name") == name_or_id:
             return item
     raise CapabilityError(f"找不到已启用 MCP：{name_or_id}")
-
-
-def validate_skill_item(item):
-    for key in ("id", "name", "path", "description", "remark", "enabled"):
-        if key not in item:
-            raise CapabilityError(f"Skill 清单项缺少字段：{key}")
-    path = (ROOT / item["path"]).resolve()
-    skills_root = (ROOT / "skills").resolve()
-    if not str(path).startswith(str(skills_root)):
-        raise CapabilityError("Skill 路径必须在 skills/ 目录内")
-    if not path.exists():
-        raise CapabilityError(f"Skill 文件不存在：{item['path']}")
 
 
 def validate_mcp_item(item):

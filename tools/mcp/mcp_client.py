@@ -1,9 +1,10 @@
 import json
+import hmac
 import os
 import queue
-import signal
 import subprocess
 import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -16,6 +17,84 @@ from lib.caplib import CapabilityError, ROOT
 
 
 PROTOCOL_VERSION = "2025-03-26"
+
+
+class WindowsJobObject:
+    def __init__(self):
+        import ctypes
+        from ctypes import wintypes
+
+        class BasicLimitInformation(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_longlong),
+                ("PerJobUserTimeLimit", ctypes.c_longlong),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class IoCounters(ctypes.Structure):
+            _fields_ = [
+                ("ReadOperationCount", ctypes.c_ulonglong),
+                ("WriteOperationCount", ctypes.c_ulonglong),
+                ("OtherOperationCount", ctypes.c_ulonglong),
+                ("ReadTransferCount", ctypes.c_ulonglong),
+                ("WriteTransferCount", ctypes.c_ulonglong),
+                ("OtherTransferCount", ctypes.c_ulonglong),
+            ]
+
+        class ExtendedLimitInformation(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", BasicLimitInformation),
+                ("IoInfo", IoCounters),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        self._kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        self._close_handle = self._kernel32.CloseHandle
+        self._close_handle.argtypes = [wintypes.HANDLE]
+        create_job = self._kernel32.CreateJobObjectW
+        create_job.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+        create_job.restype = wintypes.HANDLE
+        set_information = self._kernel32.SetInformationJobObject
+        set_information.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        set_information.restype = wintypes.BOOL
+        self._handle = create_job(None, None)
+        if not self._handle:
+            raise CapabilityError(f"创建 Windows Job Object 失败：{ctypes.WinError(ctypes.get_last_error())}")
+        information = ExtendedLimitInformation()
+        information.BasicLimitInformation.LimitFlags = 0x00002000
+        success = set_information(
+            self._handle,
+            9,
+            ctypes.byref(information),
+            ctypes.sizeof(information),
+        )
+        if not success:
+            error = ctypes.WinError(ctypes.get_last_error())
+            self.close()
+            raise CapabilityError(f"配置 Windows Job Object 失败：{error}")
+
+    def assign(self, process):
+        import ctypes
+        from ctypes import wintypes
+
+        self._kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        self._kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+        if not self._kernel32.AssignProcessToJobObject(self._handle, wintypes.HANDLE(process._handle)):
+            raise CapabilityError(f"MCP 加入 Windows Job Object 失败：{ctypes.WinError(ctypes.get_last_error())}")
+
+    def close(self):
+        if self._handle:
+            self._close_handle(self._handle)
+            self._handle = None
 
 
 class JsonRpcId:
@@ -45,13 +124,15 @@ def initialized_notification():
 
 
 class StdioMcpClient:
-    def __init__(self, params, timeout=30):
+    def __init__(self, params, timeout=30, kill_process_tree=True):
         self.params = params
         self.timeout = timeout
         self.process = None
         self.lines = queue.Queue()
         self.reader = None
         self.ids = JsonRpcId()
+        self.kill_process_tree = kill_process_tree
+        self.job = None
 
     def __enter__(self):
         command = self.params["command"]
@@ -64,32 +145,65 @@ class StdioMcpClient:
             cwd = str(ROOT)
         merged_env = None
         if env:
-            import os
-
             merged_env = os.environ.copy()
             merged_env.update(env)
-        self.process = subprocess.Popen(
-            [command] + args,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            cwd=cwd,
-            env=merged_env,
-        )
+        if os.name == "nt" and self.kill_process_tree:
+            self.job = WindowsJobObject()
+        try:
+            self.process = subprocess.Popen(
+                [command] + args,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                cwd=cwd,
+                env=merged_env,
+            )
+        except Exception:
+            if self.job:
+                self.job.close()
+                self.job = None
+            raise
+        if self.job:
+            try:
+                self.job.assign(self.process)
+            except Exception:
+                self.process.kill()
+                self.process.wait(timeout=3)
+                self.job.close()
+                self.job = None
+                raise
         self.reader = threading.Thread(target=self._read_stdout, daemon=True)
         self.reader.start()
-        self.initialize()
+        try:
+            self.initialize()
+        except Exception:
+            self.__exit__(*sys.exc_info())
+            raise
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        if self.process and self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
+        try:
+            if self.process and self.process.poll() is None:
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+        finally:
+            if self.job:
+                self.job.close()
+                self.job = None
+            if self.process:
+                for stream in (self.process.stdin, self.process.stdout, self.process.stderr):
+                    if stream:
+                        try:
+                            stream.close()
+                        except OSError:
+                            pass
+            if self.reader and self.reader.is_alive():
+                self.reader.join(timeout=0.2)
 
     def _read_stdout(self):
         for line in self.process.stdout:
@@ -257,12 +371,17 @@ def open_mcp_client(item, timeout=30):
 class RelayServer:
     """HTTP relay that proxies tool calls to a live stdio MCP client."""
 
-    def __init__(self, client, host="127.0.0.1", port=0):
+    def __init__(self, client, host="127.0.0.1", port=0, shutdown_token=None):
         self.client = client
         self.host = host
         self.port = port
         self._server = None
         self._thread = None
+        self._activity_lock = threading.Lock()
+        self._active_requests = 0
+        self._last_activity = time.monotonic()
+        self._shutdown_token = shutdown_token
+        self._shutdown_event = threading.Event()
 
     @property
     def url(self):
@@ -275,19 +394,38 @@ class RelayServer:
             def do_POST(self):
                 length = int(self.headers.get("Content-Length", "0"))
                 body = json.loads(self.rfile.read(length)) if length > 0 else {}
+                if self.path == "/shutdown":
+                    token = str(body.get("token", ""))
+                    expected = str(parent._shutdown_token or "")
+                    if not expected or not hmac.compare_digest(token, expected):
+                        self._send_json(403, {"ok": False, "error": "无效的关闭令牌"})
+                        return
+                    self._send_json(200, {"ok": True})
+                    parent._shutdown_event.set()
+                    return
+
+                parent._request_started()
                 try:
                     if self.path == "/tools/list":
                         result = parent.client.list_tools()
                     elif self.path == "/tools/call":
                         result = parent.client.call_tool(body["tool"], body.get("params", {}))
                     else:
-                        self.send_response(404)
-                        self.end_headers()
+                        self._send_json(404, {"ok": False, "error": "未知路径"})
                         return
                     data = json.dumps({"ok": True, "result": result}, ensure_ascii=False).encode("utf-8")
                 except Exception as exc:
                     data = json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False).encode("utf-8")
-                self.send_response(200)
+                finally:
+                    parent._request_finished()
+                self._send_bytes(200, data)
+
+            def _send_json(self, status, payload):
+                data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self._send_bytes(status, data)
+
+            def _send_bytes(self, status, data):
+                self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
@@ -305,6 +443,26 @@ class RelayServer:
     def stop(self):
         if self._server:
             self._server.shutdown()
+            self._server.server_close()
+
+    def _request_started(self):
+        with self._activity_lock:
+            self._active_requests += 1
+            self._last_activity = time.monotonic()
+
+    def _request_finished(self):
+        with self._activity_lock:
+            self._active_requests -= 1
+            self._last_activity = time.monotonic()
+
+    def is_idle(self, timeout):
+        if timeout <= 0:
+            return False
+        with self._activity_lock:
+            return self._active_requests == 0 and time.monotonic() - self._last_activity >= timeout
+
+    def shutdown_requested(self):
+        return self._shutdown_event.is_set()
 
 
 def call_tool_via_relay(relay_url, tool_name, params, timeout=30):

@@ -51,9 +51,13 @@ MCP 配置以 `mcps/registry.json` 为准，完整工具列表必须通过 `load
 
 ```powershell
 python tools/mcp/load_mcp.py --name "<MCP名称或ID>"
+python tools/mcp/load_mcp.py --name "<MCP名称或ID>" --keep-alive
+python tools/mcp/load_mcp.py --name "<MCP名称或ID>" --close
 python tools/mcp/use_tool.py --mcp "<MCP名称或ID>" --tool "<工具名>" --params-json "{...}"
 python tools/mcp/use_tool.py --mcp "<MCP名称或ID>" --tool "<工具名>" --params-file "params.json"
 ```
+
+`load_mcp.py` 默认不保活。只有需要连续复用 stdio MCP 时才使用 `--keep-alive`，任务完成后必须执行 `--close`。
 
 Windows 下参数包含复杂引号时，优先使用 `--params-file`。
 

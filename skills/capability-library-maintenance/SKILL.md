@@ -27,6 +27,8 @@
 6. 运行 `python tools/mcp/load_mcp.py --name "<MCP名称>"` 验证。
 7. 有测试参数时，再运行 `use_tool.py` 做最小调用。
 
+需要连续调用同一个 stdio MCP 时，可在 load 命令后加 `--keep-alive`。保活会话默认空闲 300 秒后退出、自动跟随调用平台退出，并在 Windows 下连同 MCP 派生进程一起关闭；可用 `--idle-timeout`、`--owner`、`--owner-pid` 和 `--no-kill-process-tree` 调整。任务完成后执行 `python tools/mcp/load_mcp.py --name "<MCP名称>" --close` 显式关闭。
+
 ## 禁用或删除能力
 
 禁用优先于删除。
@@ -46,4 +48,3 @@
 1. `CAPABILITY.md` 是否让 AI 知道该能力存在。
 2. `mcps/registry.json` 格式是否正确。
 3. 新增或修改的 MCP 是否完成 load 测试。
-

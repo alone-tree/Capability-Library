@@ -9,7 +9,7 @@
     "params": {
       "command": "python",
       "args": [
-        "tests/fake_stdio_mcp.py"
+        "tools/mcp/echo_mcp.py"
       ],
       "env": {},
       "cwd": null

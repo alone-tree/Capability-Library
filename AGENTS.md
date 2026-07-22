@@ -2,7 +2,7 @@
 
 给处理本仓库的 AI 看的工作规则。
 
-务必先阅读架构文档 `docs/能力库产品架构.md`。
+务必先阅读开发版说明 `README.md`。
 
 ## 关于本仓库
 
@@ -10,7 +10,7 @@
 
 开发版目录：
 ```
-docs/        # 一般性说明文档
+user-version/ # 用户版 README 源文件，不是开发版说明
 templates/   # 新用户模板，仅在目标文件缺失时初始化
 tools/mcp/   # MCP 调用工具
 tools/lib/   # 共享库
@@ -27,9 +27,9 @@ python scripts/deploy.py <目标目录> --check
 python scripts/deploy.py <目标目录>
 ```
 
-更新器只按显式文件清单完整替换开发版受管文件。它不得覆盖 `capability-entry/`、`skills/`、`CAPABILITY.md`、`mcps/registry.json` 或其他未登记文件。
+更新器只按显式源文件到目标文件映射完整替换开发版受管文件。它不得覆盖 `capability-entry/`、`skills/`、`CAPABILITY.md`、`mcps/registry.json` 或其他未登记文件。
 
-不部署到用户版：`tests/`、`scripts/`、`.gitignore`。
+不部署到用户版：开发版 `README.md`、开发版 `AGENTS.md`、`tests/`、`scripts/`、`templates/`、`.gitignore`。
 
 ## 用户版更新铁律
 

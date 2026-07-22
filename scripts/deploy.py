@@ -19,48 +19,31 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE_FILE = ".caplib/deploy-state.json"
 STATE_FORMAT = 1
 
-# 开发版拥有的通用程序和说明文档。更新时逐文件完整替换，不复制整个目录。
+# 开发版拥有的通用程序和用户说明。源文件与用户版目标文件显式对应。
 MANAGED_FILES = (
-    "README.md",
-    "LICENSE",
-    "docs/MCP使用指南.md",
-    "docs/devlog.md",
-    "docs/初始化引导提示词.md",
-    "docs/能力库产品架构.md",
-    "docs/能力库改版讨论总结.md",
-    "tools/lib/__init__.py",
-    "tools/lib/caplib.py",
-    "tools/mcp/__init__.py",
-    "tools/mcp/echo_mcp.py",
-    "tools/mcp/load_mcp.py",
-    "tools/mcp/mcp_client.py",
-    "tools/mcp/relay.py",
-    "tools/mcp/use_tool.py",
+    ("user-version/README.md", "README.md"),
+    ("LICENSE", "LICENSE"),
+    ("tools/lib/__init__.py", "tools/lib/__init__.py"),
+    ("tools/lib/caplib.py", "tools/lib/caplib.py"),
+    ("tools/mcp/__init__.py", "tools/mcp/__init__.py"),
+    ("tools/mcp/echo_mcp.py", "tools/mcp/echo_mcp.py"),
+    ("tools/mcp/load_mcp.py", "tools/mcp/load_mcp.py"),
+    ("tools/mcp/mcp_client.py", "tools/mcp/mcp_client.py"),
+    ("tools/mcp/relay.py", "tools/mcp/relay.py"),
+    ("tools/mcp/use_tool.py", "tools/mcp/use_tool.py"),
 )
 
 # 用户数据模板只在首次安装、目标文件不存在时创建，以后永不覆盖。
 SEED_FILES = (
     ("templates/CAPABILITY.md", "CAPABILITY.md"),
     ("templates/capability-entry/SKILL.md", "capability-entry/SKILL.md"),
-    (
-        "templates/capability-entry/references/能力库架构说明.md",
-        "capability-entry/references/能力库架构说明.md",
-    ),
-    (
-        "templates/capability-entry/references/能力库维护指南.md",
-        "capability-entry/references/能力库维护指南.md",
-    ),
-    (
-        "templates/capability-entry/references/新平台接入指南.md",
-        "capability-entry/references/新平台接入指南.md",
-    ),
     ("templates/mcps/registry.json", "mcps/registry.json"),
 )
 
 # 这些路径属于用户。受管文件清单不得进入这些范围。
 PROTECTED_FILES = {"CAPABILITY.md"}
 PROTECTED_PREFIXES = ("capability-entry/", "skills/", "mcps/")
-ENTRY_GUIDE_MARKER = "docs/MCP使用指南.md"
+ENTRY_README_MARKERS = ("../README.md", "capability-library/README.md")
 
 
 def _safe_relative(path):
@@ -76,15 +59,20 @@ def _safe_relative(path):
 def _validate_manifest():
     """阻止开发者误把用户文件加入自动覆盖清单。"""
     seen = set()
-    for raw_path in MANAGED_FILES:
-        path = _safe_relative(raw_path)
-        if path in seen:
-            raise ValueError(f"受管文件重复：{path}")
-        if path in PROTECTED_FILES or path.startswith(PROTECTED_PREFIXES):
-            raise ValueError(f"受管文件进入用户数据范围：{path}")
-        if not (ROOT / path).is_file():
-            raise FileNotFoundError(f"开发版受管文件不存在：{path}")
-        seen.add(path)
+    seen_sources = set()
+    for source_raw, target_raw in MANAGED_FILES:
+        source = _safe_relative(source_raw)
+        target = _safe_relative(target_raw)
+        if source in seen_sources:
+            raise ValueError(f"受管源文件重复：{source}")
+        if target in seen:
+            raise ValueError(f"受管目标文件重复：{target}")
+        if target in PROTECTED_FILES or target.startswith(PROTECTED_PREFIXES):
+            raise ValueError(f"受管文件进入用户数据范围：{target}")
+        if not (ROOT / source).is_file():
+            raise FileNotFoundError(f"开发版受管源文件不存在：{source}")
+        seen_sources.add(source)
+        seen.add(target)
 
     for source_raw, target_raw in SEED_FILES:
         source = _safe_relative(source_raw)
@@ -169,19 +157,19 @@ def _remove_empty_parents(path, stop):
 
 
 def _entry_migration_warning(target):
-    """提醒老用户手动把通用 MCP 指南接入自定义入口。"""
+    """提醒老用户手动把统一 README 接入自定义入口。"""
     entry = target / "capability-entry" / "SKILL.md"
     if not entry.is_file():
         return None
     try:
         content = entry.read_text(encoding="utf-8")
     except OSError:
-        return "无法读取 capability-entry/SKILL.md，请手动确认 MCP 使用指南入口。"
+        return "无法读取 capability-entry/SKILL.md，请手动确认用户版 README 入口。"
     normalized_content = content.replace("\\", "/")
-    if ENTRY_GUIDE_MARKER not in normalized_content:
+    if not any(marker in normalized_content for marker in ENTRY_README_MARKERS):
         return (
             "capability-entry/SKILL.md 是用户文件，更新器未修改；"
-            "当前入口尚未引用 docs/MCP使用指南.md，需要手动迁移。"
+            "当前入口尚未引用用户版 README 中的 MCP 使用说明，需要手动迁移。"
         )
     return None
 
@@ -192,9 +180,13 @@ def deploy(target, check=False):
     target = Path(target).resolve()
     old_state = _load_state(target)
     old_managed = old_state["managed_files"]
+    managed_sources = {
+        _safe_relative(target): ROOT / _safe_relative(source)
+        for source, target in MANAGED_FILES
+    }
     source_hashes = {
-        _safe_relative(path): _sha256(ROOT / _safe_relative(path))
-        for path in MANAGED_FILES
+        target_path: _sha256(source_path)
+        for target_path, source_path in managed_sources.items()
     }
     result = {
         "created": [],
@@ -207,7 +199,7 @@ def deploy(target, check=False):
     }
 
     for relative_path, source_hash in source_hashes.items():
-        source = ROOT / relative_path
+        source = managed_sources[relative_path]
         destination = target / relative_path
         if destination.is_file() and _sha256(destination) == source_hash:
             result["unchanged"].append(relative_path)

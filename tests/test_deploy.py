@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 
@@ -13,6 +14,11 @@ DEPLOY_PATH = ROOT / "scripts" / "deploy.py"
 DEPLOY_SPEC = importlib.util.spec_from_file_location("capability_library_deploy", DEPLOY_PATH)
 deploy_module = importlib.util.module_from_spec(DEPLOY_SPEC)
 DEPLOY_SPEC.loader.exec_module(deploy_module)
+sys.path.insert(0, str(ROOT / "scripts"))
+import package_release
+
+
+MANAGED_TARGETS = {target for _source, target in deploy_module.MANAGED_FILES}
 
 
 class DeployTests(unittest.TestCase):
@@ -55,6 +61,10 @@ class DeployTests(unittest.TestCase):
             self.assertEqual((self.target / relative_path).read_bytes(), content)
         self.assertEqual(
             (self.target / "README.md").read_bytes(),
+            (deploy_module.ROOT / "user-version/README.md").read_bytes(),
+        )
+        self.assertNotEqual(
+            (self.target / "README.md").read_bytes(),
             (deploy_module.ROOT / "README.md").read_bytes(),
         )
         self.assertEqual(
@@ -80,15 +90,30 @@ class DeployTests(unittest.TestCase):
         self.assertIn("capability-entry/SKILL.md", second["preserved"])
         self.assertEqual(second["seeded"], [])
 
-    def test_entry_guide_marker_accepts_windows_path_separators(self):
+    def test_entry_readme_marker_accepts_windows_path_separators(self):
         self._write(
             "capability-entry/SKILL.md",
-            "使用前读取 D:\\library\\docs\\MCP使用指南.md\n".encode("utf-8"),
+            "使用前读取 D:\\library\\capability-library\\README.md\n".encode("utf-8"),
         )
 
         result = deploy_module.deploy(self.target, check=True)
 
         self.assertFalse(any("手动迁移" in item for item in result["warnings"]))
+
+    def test_legacy_entry_gets_manual_readme_migration_warning(self):
+        self._write(
+            "capability-entry/SKILL.md",
+            "使用前读取 ../docs/MCP使用指南.md\n".encode("utf-8"),
+        )
+
+        result = deploy_module.deploy(self.target, check=True)
+
+        self.assertTrue(any("用户版 README" in item for item in result["warnings"]))
+
+    def test_legacy_mcp_guide_is_not_created_for_new_users(self):
+        fresh = deploy_module.deploy(self.target)
+        self.assertFalse((self.target / "docs/MCP使用指南.md").exists())
+        self.assertNotIn("docs/MCP使用指南.md", fresh["created"])
 
     def test_unchanged_managed_files_are_not_rewritten(self):
         deploy_module.deploy(self.target)
@@ -107,7 +132,7 @@ class DeployTests(unittest.TestCase):
         result = deploy_module.deploy(self.target, check=True)
 
         self.assertFalse(self.target.exists())
-        self.assertEqual(set(result["created"]), set(deploy_module.MANAGED_FILES))
+        self.assertEqual(set(result["created"]), MANAGED_TARGETS)
         self.assertEqual(
             set(result["seeded"]),
             {target for _source, target in deploy_module.SEED_FILES},
@@ -209,6 +234,40 @@ class DeployTests(unittest.TestCase):
                 closed = run(load_script, "--name", "本地回声 MCP", "--close")
                 self.assertEqual(closed.returncode, 0, closed.stderr)
                 self.assertTrue(json.loads(closed.stdout)["ok"])
+
+    def test_user_release_contains_only_deployed_user_files(self):
+        releases = self.root / "releases"
+        zip_path = package_release.build_release("test-user", releases)
+
+        with zipfile.ZipFile(zip_path) as archive:
+            names = {
+                name.removeprefix("test-user/")
+                for name in archive.namelist()
+                if not name.endswith("/")
+            }
+
+        expected = MANAGED_TARGETS | {
+            target for _source, target in deploy_module.SEED_FILES
+        } | {deploy_module.STATE_FILE}
+        self.assertEqual(names, expected)
+        self.assertNotIn("scripts/deploy.py", names)
+        self.assertNotIn("AGENTS.md", names)
+        self.assertNotIn("tests/test_deploy.py", names)
+
+    def test_exported_docs_do_not_reference_local_deploy_script(self):
+        deploy_module.deploy(self.target)
+        markdown_files = list(self.target.rglob("*.md"))
+        managed_markdown = [
+            path
+            for path in markdown_files
+            if path.relative_to(self.target).as_posix() in MANAGED_TARGETS
+        ]
+
+        for path in managed_markdown:
+            content = path.read_text(encoding="utf-8")
+            self.assertNotIn("python scripts/deploy.py", content)
+            self.assertNotIn("templates/", content)
+            self.assertNotIn("tests/", content)
 
 
 if __name__ == "__main__":

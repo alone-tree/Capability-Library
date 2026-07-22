@@ -1,91 +1,55 @@
+"""使用部署清单构建仅供新用户首次安装的能力库压缩包。"""
+
 import argparse
-import shutil
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
+
+from deploy import deploy
+
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASES = ROOT / "releases"
 
-EXCLUDE_SUFFIXES = {".pyc"}
-EXCLUDE_NAMES = {"__pycache__", ".git", ".codegraph", ".pytest_cache", "releases"}
-EXCLUDE_FILES = {"config.local.json"}
+
+def _make_zip(source_dir, zip_path):
+    """把临时用户实例打包，并保留顶层目录名。"""
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for file_path in source_dir.rglob("*"):
+            if file_path.is_file():
+                archive.write(file_path, file_path.relative_to(source_dir.parent))
 
 
-def should_exclude(path, root):
-    if path.name in EXCLUDE_FILES:
-        return True
-    rel = path.relative_to(root)
-    for part in rel.parts:
-        if part in EXCLUDE_NAMES:
-            return True
-    return False
-
-
-def build_release(output_name=None):
-    if output_name is None:
-        output_name = "capability-library"
-
-    RELEASES.mkdir(parents=True, exist_ok=True)
-    build_dir = RELEASES / output_name
-    zip_path = RELEASES / f"{output_name}.zip"
-
-    if build_dir.exists():
-        shutil.rmtree(build_dir)
+def build_release(output_name="capability-library-user", releases_dir=None):
+    """从空目录执行一次部署，确保安装包与真实首次安装完全一致。"""
+    destination = Path(releases_dir) if releases_dir else RELEASES
+    destination.mkdir(parents=True, exist_ok=True)
+    zip_path = destination / f"{output_name}.zip"
     if zip_path.exists():
         zip_path.unlink()
 
-    build_dir.mkdir()
-
-    for item in ROOT.iterdir():
-        if should_exclude(item, ROOT):
-            continue
-        dest = build_dir / item.name
-        if item.is_dir():
-            _copy_dir(item, dest)
-        else:
-            shutil.copy2(item, dest)
-
-    _make_zip(build_dir, zip_path)
-    shutil.rmtree(build_dir)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        user_root = Path(temp_dir) / output_name
+        deploy(user_root)
+        _make_zip(user_root, zip_path)
 
     size_mb = zip_path.stat().st_size / (1024 * 1024)
-    print(f"Release built: {zip_path} ({size_mb:.1f} MB)")
-
-
-def _copy_dir(src, dst):
-    dst.mkdir(parents=True, exist_ok=True)
-    for item in src.iterdir():
-        if item.name in EXCLUDE_NAMES:
-            continue
-        if item.name in EXCLUDE_FILES:
-            continue
-        if item.suffix in EXCLUDE_SUFFIXES:
-            continue
-        dest = dst / item.name
-        if item.is_dir():
-            _copy_dir(item, dest)
-        else:
-            shutil.copy2(item, dest)
-
-
-def _make_zip(src_dir, zip_path):
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for file_path in src_dir.rglob("*"):
-            if file_path.is_file():
-                arcname = file_path.relative_to(src_dir.parent)
-                zf.write(file_path, arcname)
+    print(f"用户版安装包已生成：{zip_path}（{size_mb:.1f} MB）")
+    return zip_path
 
 
 def main():
-    parser = argparse.ArgumentParser(description="打包能力库 release zip")
-    parser.add_argument("--name", default="capability-library", help="输出文件名（不含扩展名）")
+    parser = argparse.ArgumentParser(description="构建能力库新用户安装包")
+    parser.add_argument(
+        "--name", default="capability-library-user", help="输出文件名（不含扩展名）"
+    )
     args = parser.parse_args()
 
     try:
         build_release(args.name)
     except Exception as exc:
-        print(f"打包失败: {exc}", file=sys.stderr)
+        print(f"打包失败：{exc}", file=sys.stderr)
         sys.exit(1)
 
 
